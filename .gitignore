@@ -1,0 +1,24 @@
+# Python virtual environment & cache
+venv/
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Model weights
+weights/*.pt
+!weights/.gitkeep
+
+# Uploaded citizen media
+uploads/*
+!uploads/.gitkeep
+
+# Local database
+*.db
+*.sqlite3
+
+# OS metadata
+.DS_Store
+Thumbs.db

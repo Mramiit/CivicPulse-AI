@@ -1,0 +1,14 @@
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+sqlalchemy>=2.0.25
+pydantic>=2.6.0
+pydantic-settings>=2.1.0
+httpx>=0.26.0
+python-multipart>=0.0.7
+pillow>=10.2.0
+numpy>=1.26.0
+scikit-learn>=1.4.0
+opencv-python>=4.9.0.80
+ultralytics>=8.1.0
+openai-whisper>=20231117
+aiofiles>=23.2.1

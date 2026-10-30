@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CivicPulse AI — Autonomous Civic Grievance & Infrastructure Triage Engine</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d'
+            },
+            hazard: {
+              critical: '#ef4444',
+              high: '#f97316',
+              moderate: '#eab308',
+              resolved: '#10b981'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.4); opacity: 0; }
+      100% { transform: scale(0.95); opacity: 0; }
+    }
+    .pulsing-marker-critical {
+      background-color: rgba(239, 68, 68, 0.9);
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 14px rgba(239, 68, 68, 0.8);
+      border-radius: 50%;
+    }
+    .pulsing-marker-moderate {
+      background-color: rgba(245, 158, 11, 0.9);
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.8);
+      border-radius: 50%;
+    }
+    .pulsing-marker-resolved {
+      background-color: rgba(16, 185, 129, 0.9);
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
+      border-radius: 50%;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased overflow-hidden">
+
+  <!-- Top Navbar -->
+  <header class="bg-slate-900/90 border-b border-slate-800 backdrop-blur px-4 py-2.5 flex items-center justify-between shrink-0 z-30">
+    <div class="flex items-center gap-3">
+      <div class="h-9 w-9 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+        <i data-lucide="activity" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="font-bold tracking-tight text-white text-lg">CivicPulse AI</span>
+          <span class="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-950 text-emerald-400 border border-emerald-800">ENGINE v1.0</span>
+        </div>
+        <p class="text-xs text-slate-400 hidden sm:block">Autonomous Multimodal Grievance Triage & Closed-Loop SLA Dispatch</p>
+      </div>
+    </div>
+
+    <!-- Live System Metric Pills -->
+    <div class="flex items-center gap-2 sm:gap-4 text-xs">
+      <div class="bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="text-slate-400">Active:</span>
+        <span id="metric-active" class="font-bold text-white">0</span>
+      </div>
+      <div class="bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 hidden md:flex items-center gap-2">
+        <span class="text-slate-400">Critical SLA:</span>
+        <span id="metric-critical" class="font-bold text-red-400">0</span>
+      </div>
+      <div class="bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 hidden md:flex items-center gap-2">
+        <span class="text-slate-400">Mean Severity:</span>
+        <span id="metric-severity" class="font-bold text-amber-400">0.00</span>
+      </div>
+      <div class="bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 flex items-center gap-2">
+        <span class="text-slate-400">Resolved:</span>
+        <span id="metric-resolved" class="font-bold text-emerald-400">0</span>
+      </div>
+      <button onclick="refreshData()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition" title="Refresh Live Data">
+        <i data-lucide="refresh-cw" class="w-4 h-4" id="refresh-icon"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main 3-Pane Container -->
+  <main class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+
+    <!-- LEFT PANE: Citizen Report Portal & Verification (360px) -->
+    <aside class="w-full lg:w-[380px] bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 overflow-y-auto">
+      
+      <!-- Sub-tabs -->
+      <div class="flex border-b border-slate-800 bg-slate-950/60 sticky top-0 z-10">
+        <button id="tab-report-btn" onclick="switchLeftTab('report')" class="flex-1 py-3 text-xs font-semibold text-emerald-400 border-b-2 border-emerald-500 flex items-center justify-center gap-1.5">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i> Log Grievance
+        </button>
+        <button id="tab-verify-btn" onclick="switchLeftTab('verify')" class="flex-1 py-3 text-xs font-semibold text-slate-400 hover:text-slate-200 border-b-2 border-transparent flex items-center justify-center gap-1.5">
+          <i data-lucide="shield-check" class="w-4 h-4"></i> Proof of Fix
+        </button>
+      </div>
+
+      <!-- TAB 1: Report Ingestion Form -->
+      <div id="tab-report" class="p-4 space-y-4 flex-1">
+        
+        <!-- Live GPS & OSM Geolocation Box -->
+        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="map-pin" class="w-3.5 h-3.5 text-emerald-400"></i> Live Geolocation
+            </label>
+            <button type="button" onclick="acquireLiveGPS()" id="btn-gps" class="text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-2 py-1 rounded-md flex items-center gap-1 transition">
+              <i data-lucide="crosshair" class="w-3 h-3"></i> Use Device GPS
+            </button>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <span class="text-slate-500 block">Latitude</span>
+              <input type="number" step="any" id="input-lat" placeholder="28.6139" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white font-mono text-xs focus:border-emerald-500 outline-none" required />
+            </div>
+            <div>
+              <span class="text-slate-500 block">Longitude</span>
+              <input type="number" step="any" id="input-lon" placeholder="77.2090" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white font-mono text-xs focus:border-emerald-500 outline-none" required />
+            </div>
+          </div>
+          
+          <div id="live-address-preview" class="text-[11px] text-slate-400 truncate bg-slate-900/60 p-2 rounded border border-slate-800/80">
+            <span class="text-slate-500">Reverse Geocoded Address:</span> Click map or fetch GPS
+          </div>
+        </div>
+
+        <!-- Defect Category Hint Selector -->
+        <div>
+          <label class="text-xs font-semibold text-slate-300 block mb-1">Defect Classification</label>
+          <select id="input-category" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:border-emerald-500 outline-none">
+            <option value="Pothole / Road Damage">Pothole / Road Damage (PWD)</option>
+            <option value="Open Manhole / Drain">Open Manhole / Drain (Jal Board - High Risk)</option>
+            <option value="Waterlogging & Drainage">Waterlogging & Drainage (Jal Board)</option>
+            <option value="Fallen Tree / Road Hazard">Fallen Tree / Road Hazard (Emergency)</option>
+            <option value="Solid Waste & Garbage">Solid Waste & Overflowing Garbage (SWM)</option>
+            <option value="Streetlight / Electrical Hazard">Streetlight / Electrical Wire Spark (DISCOM)</option>
+            <option value="General Civic Defect">General Civic Defect</option>
+          </select>
+        </div>
+
+        <!-- Camera / Defect Image Upload -->
+        <div>
+          <label class="text-xs font-semibold text-slate-300 block mb-1">Defect Photograph (Visual Evidence)</label>
+          <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl p-3 text-center bg-slate-950/60 transition cursor-pointer relative" onclick="document.getElementById('input-image').click()">
+            <input type="file" id="input-image" accept="image/*" class="hidden" onchange="handleImagePreview(event)" />
+            <div id="image-upload-prompt" class="space-y-1">
+              <i data-lucide="camera" class="w-6 h-6 text-slate-400 mx-auto"></i>
+              <div class="text-xs text-slate-300 font-medium">Capture or Upload Defect Photo</div>
+              <div class="text-[10px] text-slate-500">Feeds YOLOv8 + OpenCV Structural Contours</div>
+            </div>
+            <img id="image-preview" class="hidden max-h-36 mx-auto rounded-lg object-cover border border-slate-700 mt-1" />
+          </div>
+        </div>
+
+        <!-- Voice Recorder (Web Audio API) -->
+        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="mic" class="w-3.5 h-3.5 text-sky-400"></i> Citizen Voice Dispatch
+            </label>
+            <span id="voice-timer" class="text-[11px] text-slate-400 font-mono hidden">00:00</span>
+          </div>
+          
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-record-voice" onclick="toggleVoiceRecording()" class="flex-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+              <i data-lucide="mic" class="w-3.5 h-3.5" id="record-icon"></i>
+              <span id="record-text">Record Voice Grievance</span>
+            </button>
+            <audio id="audio-playback" controls class="hidden h-8 max-w-[150px]"></audio>
+          </div>
+          <div class="text-[10px] text-slate-500">Whisper multilingual-to-English translation & urgency keyword extraction</div>
+        </div>
+
+        <!-- Description Note -->
+        <div>
+          <label class="text-xs font-semibold text-slate-300 block mb-1">Contextual Description (Optional)</label>
+          <textarea id="input-description" rows="2" placeholder="e.g. Large crater near school gate causing skidding..." class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-white placeholder-slate-600 focus:border-emerald-500 outline-none resize-none"></textarea>
+        </div>
+
+        <!-- Ingestion Submit Button -->
+        <button type="button" onclick="submitGrievanceReport()" id="btn-submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 transition">
+          <i data-lucide="send" class="w-4 h-4"></i>
+          <span>Submit Grievance to AI Triage</span>
+        </button>
+
+        <div id="submit-status-banner" class="hidden p-3 rounded-lg text-xs border"></div>
+      </div>
+
+      <!-- TAB 2: Proof of Fix Verification Modal -->
+      <div id="tab-verify" class="p-4 space-y-4 flex-1 hidden">
+        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+          <div class="text-xs font-semibold text-emerald-400 flex items-center gap-1.5 mb-1">
+            <i data-lucide="check-check" class="w-4 h-4"></i> Closed-Loop Repair Verification
+          </div>
+          <p class="text-[11px] text-slate-400">Upload an 'After' repair photograph. AI vision compares defect counts: marks resolved only if defects drop to 0 or severity reduces by &gt;80%.</p>
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold text-slate-300 block mb-1">Select Ticket Tracking Code</label>
+          <input type="text" id="verify-ticket-input" placeholder="e.g. CP-9A4B12" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-white uppercase font-mono focus:border-emerald-500 outline-none" />
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold text-slate-300 block mb-1">After-Repair Photograph</label>
+          <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl p-3 text-center bg-slate-950/60 transition cursor-pointer relative" onclick="document.getElementById('input-verify-image').click()">
+            <input type="file" id="input-verify-image" accept="image/*" class="hidden" onchange="handleVerifyImagePreview(event)" />
+            <div id="verify-upload-prompt" class="space-y-1">
+              <i data-lucide="image-plus" class="w-6 h-6 text-slate-400 mx-auto"></i>
+              <div class="text-xs text-slate-300 font-medium">Upload Contractor 'After' Photo</div>
+            </div>
+            <img id="verify-image-preview" class="hidden max-h-36 mx-auto rounded-lg object-cover border border-slate-700 mt-1" />
+          </div>
+        </div>
+
+        <button type="button" onclick="submitProofOfFix()" id="btn-verify-submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition">
+          <i data-lucide="shield-check" class="w-4 h-4"></i> Run Proof-of-Fix Vision Audit
+        </button>
+
+        <div id="verify-status-banner" class="hidden p-3 rounded-lg text-xs border"></div>
+      </div>
+
+    </aside>
+
+    <!-- CENTER PANE: Interactive Leaflet Map with DBSCAN Clusters -->
+    <section class="flex-1 flex flex-col min-h-[350px] lg:min-h-0 relative">
+      <!-- Map filter control bar -->
+      <div class="absolute top-3 left-14 z-[1000] bg-slate-900/90 border border-slate-700/80 rounded-xl p-1.5 shadow-xl backdrop-blur flex items-center gap-2 text-xs">
+        <button onclick="filterMap('ALL')" id="flt-all" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-medium">All</button>
+        <button onclick="filterMap('CRITICAL')" id="flt-crit" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">Critical SLA</button>
+        <button onclick="filterMap('OPEN')" id="flt-open" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">Active</button>
+        <button onclick="filterMap('VERIFIED_RESOLVED')" id="flt-res" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">Resolved</button>
+        <span class="text-slate-600">|</span>
+        <span class="text-[11px] text-slate-400 pr-1 flex items-center gap-1">
+          <span class="w-2.5 h-2.5 rounded-full border border-sky-400 bg-sky-500/20"></span> 35m Cluster Radius
+        </span>
+      </div>
+
+      <!-- Leaflet Map Canvas -->
+      <div id="map" class="w-full h-full bg-slate-950"></div>
+    </section>
+
+    <!-- RIGHT PANE: Real-Time Triage Inspector & Mathematical Breakdown (400px) -->
+    <aside class="w-full lg:w-[410px] bg-slate-900 border-l border-slate-800 flex flex-col shrink-0 overflow-y-auto">
+      
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60 sticky top-0 z-10">
+        <div class="text-xs font-bold text-white flex items-center gap-2">
+          <i data-lucide="eye" class="w-4 h-4 text-emerald-400"></i>
+          <span>Triage & SLA Inspector</span>
+        </div>
+        <span id="inspector-code" class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">Select a Ticket</span>
+      </div>
+
+      <!-- Selected Ticket Content -->
+      <div id="inspector-body" class="p-4 space-y-4 flex-1">
+        
+        <!-- Welcome empty state -->
+        <div id="inspector-empty" class="text-center py-12 space-y-3">
+          <div class="w-12 h-12 rounded-full bg-slate-800/80 border border-slate-700 mx-auto flex items-center justify-center text-slate-400">
+            <i data-lucide="map-pinned" class="w-6 h-6"></i>
+          </div>
+          <p class="text-xs text-slate-400 max-w-xs mx-auto">Click on any map pin or submit a new grievance to inspect multimodal severity, YOLO bounding boxes, and live SLA countdowns.</p>
+        </div>
+
+        <!-- Dynamic Card Loaded on Click -->
+        <div id="inspector-details" class="hidden space-y-4">
+          
+          <!-- Header Banner -->
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+            <div class="flex items-center justify-between">
+              <span id="card-category" class="text-xs font-bold text-white">Category</span>
+              <span id="card-status" class="px-2 py-0.5 text-[10px] font-bold rounded-full border">STATUS</span>
+            </div>
+            <div class="text-xs text-slate-400 flex items-center gap-1.5">
+              <i data-lucide="building-2" class="w-3.5 h-3.5 text-slate-500"></i>
+              <span id="card-dept">Department</span>
+            </div>
+            <div class="text-[11px] text-slate-400 flex items-start gap-1.5">
+              <i data-lucide="map-pin" class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5"></i>
+              <span id="card-address" class="line-clamp-2">Address</span>
+            </div>
+          </div>
+
+          <!-- Dynamic SLA Countdown & Crowd Confirmations -->
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-slate-400 font-medium flex items-center gap-1.5">
+                <i data-lucide="clock" class="w-3.5 h-3.5 text-amber-400"></i> SLA Resolution Window
+              </span>
+              <span id="card-sla-badge" class="font-mono font-bold text-amber-400">48.0h remaining</span>
+            </div>
+            
+            <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+              <div id="card-sla-bar" class="bg-amber-500 h-2 rounded-full transition-all duration-500" style="width: 70%"></div>
+            </div>
+
+            <div class="flex items-center justify-between text-[11px] pt-1">
+              <span class="text-slate-500 flex items-center gap-1">
+                <i data-lucide="users" class="w-3 h-3 text-sky-400"></i>
+                <span id="card-upvotes">1 citizen confirmation</span>
+              </span>
+              <span id="card-sla-status" class="text-xs font-bold text-emerald-400">ON TRACK</span>
+            </div>
+          </div>
+
+          <!-- Annotated Image / Before-After Preview -->
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+            <div class="flex items-center justify-between text-xs font-semibold text-slate-300">
+              <span class="flex items-center gap-1.5">
+                <i data-lucide="scan" class="w-3.5 h-3.5 text-red-400"></i> YOLOv8 / Edge Defect Inference
+              </span>
+              <span id="card-conf-tag" class="text-[10px] text-slate-400 font-mono">Conf: 85%</span>
+            </div>
+            <div class="rounded-lg overflow-hidden border border-slate-800 relative bg-black">
+              <img id="card-img" class="w-full h-48 object-contain" src="" alt="Defect detection" />
+            </div>
+            <div id="card-after-container" class="hidden pt-2 border-t border-slate-800 space-y-1">
+              <span class="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                <i data-lucide="shield-check" class="w-3 h-3"></i> Verified "After" Proof of Fix
+              </span>
+              <img id="card-after-img" class="w-full h-36 object-contain rounded border border-emerald-900/60" src="" alt="After Repair" />
+            </div>
+          </div>
+
+          <!-- Mathematical Severity Breakdown S in [0, 1] -->
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <div class="text-xs font-bold text-white flex items-center gap-1">
+                <i data-lucide="calculator" class="w-3.5 h-3.5 text-purple-400"></i>
+                <span>Multimodal Severity:</span>
+                <span id="card-sev-score" class="text-emerald-400 font-mono text-sm ml-1">0.68</span>
+              </div>
+              <span id="card-sev-level" class="text-[10px] px-2 py-0.5 rounded font-bold bg-amber-950 text-amber-400 border border-amber-800">MODERATE</span>
+            </div>
+
+            <!-- KaTeX / Formula representation -->
+            <div class="text-[10px] font-mono text-slate-400 bg-slate-900 p-2 rounded border border-slate-800/80 overflow-x-auto">
+              S = 0.30·C<sub>conf</sub> + 0.35·R<sub>area</sub> + 0.20·W<sub>hazard</sub> + 0.15·E<sub>weather</sub>
+            </div>
+
+            <!-- Segmented Progress Bar -->
+            <div class="space-y-1 text-[11px]">
+              <div class="flex justify-between text-slate-400">
+                <span>Confidence term (0.30):</span>
+                <span id="term-conf" class="font-mono text-white">0.24</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Area ratio term (0.35):</span>
+                <span id="term-area" class="font-mono text-white">0.12</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Hazard weight term (0.20):</span>
+                <span id="term-hazard" class="font-mono text-white">0.15</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Live Weather risk term (0.15):</span>
+                <span id="term-weather" class="font-mono text-white">0.05</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Environmental Amplification (Open-Meteo) -->
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+            <div class="text-xs font-semibold text-slate-300 flex items-center justify-between">
+              <span class="flex items-center gap-1.5">
+                <i data-lucide="cloud-rain" class="w-3.5 h-3.5 text-sky-400"></i> Live Weather Risk
+              </span>
+              <span id="card-weather-tag" class="text-[10px] px-2 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800">Open-Meteo Active</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-center text-xs">
+              <div class="bg-slate-900 p-2 rounded border border-slate-800">
+                <span class="text-[10px] text-slate-500 block">Precipitation</span>
+                <span id="weather-precip" class="font-bold text-white font-mono">0.0 mm/h</span>
+              </div>
+              <div class="bg-slate-900 p-2 rounded border border-slate-800">
+                <span class="text-[10px] text-slate-500 block">Temperature</span>
+                <span id="weather-temp" class="font-bold text-white font-mono">25°C</span>
+              </div>
+              <div class="bg-slate-900 p-2 rounded border border-slate-800">
+                <span class="text-[10px] text-slate-500 block">Condition</span>
+                <span id="weather-cond" class="font-bold text-white text-[11px] truncate block">Clear</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Audio Voice Note & Urgency Keywords -->
+          <div id="card-audio-section" class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 hidden">
+            <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="volume-2" class="w-3.5 h-3.5 text-emerald-400"></i> Whisper Transcript & Urgency
+            </span>
+            <p id="card-transcript" class="text-[11px] text-slate-300 italic bg-slate-900 p-2 rounded border border-slate-800"></p>
+            <div id="card-keywords" class="flex flex-wrap gap-1"></div>
+          </div>
+
+          <!-- Audit Log Trail -->
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+            <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="file-text" class="w-3.5 h-3.5 text-slate-400"></i> Immutable Audit Trail
+            </span>
+            <div id="card-audit-trail" class="space-y-2 max-h-40 overflow-y-auto pr-1"></div>
+          </div>
+
+        </div>
+
+        <!-- Real-time Analytics Visualizer (Charts) -->
+        <div class="pt-2 border-t border-slate-800 space-y-3">
+          <div class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+            <i data-lucide="bar-chart-3" class="w-3.5 h-3.5 text-emerald-400"></i> Department Workload
+          </div>
+          <div class="h-44 bg-slate-950 p-2 rounded-xl border border-slate-800">
+            <canvas id="deptChart"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+    </aside>
+
+  </main>
+
+  <script>
+    // State management
+    let map = null;
+    let markersLayer = null;
+    let clusterRingsLayer = null;
+    let currentFilter = 'ALL';
+    let allTickets = [];
+    let selectedTicketId = null;
+    let currentMapClickMarker = null;
+    
+    // Voice recording state
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let audioBlob = null;
+    let recordingTimerInterval = null;
+    let recordingSeconds = 0;
+
+    // Charts
+    let deptChart = null;
+
+    // Initialize Map and App on Load
+    document.addEventListener("DOMContentLoaded", () => {
+      lucide.createIcons();
+      initMap();
+      initCharts();
+      fetchTickets();
+      fetchAnalytics();
+
+      // Poll analytics & live countdowns every 20 seconds
+      setInterval(() => {
+        fetchTickets(false);
+        fetchAnalytics();
+      }, 20000);
+    });
+
+    function initMap() {
+      // Default initial view centered (Delhi coordinates as starting view until GPS fetched)
+      map = L.map('map', { zoomControl: false }).setView([28.6139, 77.2090], 13);
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+      // CartoDB Dark Matter tile layer
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 19
+      }).addTo(map);
+
+      markersLayer = L.layerGroup().addTo(map);
+      clusterRingsLayer = L.layerGroup().addTo(map);
+
+      // On map click -> update coordinates in form & query live Nominatim reverse geocode
+      map.on('click', async (e) => {
+        const { lat, lng } = e.latlng;
+        setCoordinatesInForm(lat, lng);
+        await reverseGeocodeLive(lat, lng);
+      });
+    }
+
+    function setCoordinatesInForm(lat, lng) {
+      document.getElementById('input-lat').value = lat.toFixed(6);
+      document.getElementById('input-lon').value = lng.toFixed(6);
+
+      if (currentMapClickMarker) {
+        map.removeLayer(currentMapClickMarker);
+      }
+      currentMapClickMarker = L.circleMarker([lat, lng], {
+        radius: 7,
+        color: '#22c55e',
+        fillColor: '#4ade80',
+        fillOpacity: 0.9,
+        weight: 2
+      }).addTo(map).bindPopup("Selected Incident Coordinates").openPopup();
+    }
+
+    async function reverseGeocodeLive(lat, lon) {
+      const preview = document.getElementById('live-address-preview');
+      preview.innerHTML = `<span class="text-slate-500">Reverse Geocoding (OSM Nominatim)...</span>`;
+      try {
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=jsonv2`;
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'CivicPulseAI-Web/1.0' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          preview.innerHTML = `<span class="text-emerald-400 font-semibold">OSM:</span> ${data.display_name}`;
+          return;
+        }
+      } catch (err) {
+        // Fallback
+      }
+      preview.innerHTML = `<span class="text-slate-500">Live GPS:</span> ${lat.toFixed(5)}° N, ${lon.toFixed(5)}° E`;
+    }
+
+    function acquireLiveGPS() {
+      const btn = document.getElementById('btn-gps');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = `<i data-lucide="loader" class="w-3 h-3 animate-spin"></i> Locating...`;
+      lucide.createIcons();
+
+      if (!navigator.geolocation) {
+        alert("HTML5 Geolocation is not supported by your browser.");
+        btn.innerHTML = originalText;
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          setCoordinatesInForm(lat, lng);
+          map.setView([lat, lng], 16);
+          await reverseGeocodeLive(lat, lng);
+          btn.innerHTML = `<i data-lucide="check" class="w-3 h-3 text-emerald-400"></i> Locked`;
+          lucide.createIcons();
+          setTimeout(() => { btn.innerHTML = originalText; lucide.createIcons(); }, 3000);
+        },
+        (error) => {
+          alert(`GPS Acquisition Error: ${error.message}`);
+          btn.innerHTML = originalText;
+          lucide.createIcons();
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
+    // Media & Voice handling
+    function handleImagePreview(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const preview = document.getElementById('image-preview');
+        const prompt = document.getElementById('image-upload-prompt');
+        preview.src = URL.createObjectURL(file);
+        preview.classList.remove('hidden');
+        prompt.classList.add('hidden');
+      }
+    }
+
+    function handleVerifyImagePreview(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const preview = document.getElementById('verify-image-preview');
+        const prompt = document.getElementById('verify-upload-prompt');
+        preview.src = URL.createObjectURL(file);
+        preview.classList.remove('hidden');
+        prompt.classList.add('hidden');
+      }
+    }
+
+    async function toggleVoiceRecording() {
+      const btn = document.getElementById('btn-record-voice');
+      const recordText = document.getElementById('record-text');
+      const timer = document.getElementById('voice-timer');
+      const playback = document.getElementById('audio-playback');
+
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          audioChunks = [];
+          mediaRecorder = new MediaRecorder(stream);
+          
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) audioChunks.push(e.data);
+          };
+
+          mediaRecorder.onstop = () => {
+            audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            playback.src = URL.createObjectURL(audioBlob);
+            playback.classList.remove('hidden');
+          };
+
+          mediaRecorder.start();
+          btn.classList.replace('bg-sky-500/20', 'bg-red-500/20');
+          btn.classList.replace('border-sky-500/40', 'border-red-500/40');
+          btn.classList.replace('text-sky-300', 'text-red-400');
+          recordText.innerText = "Stop Recording";
+
+          recordingSeconds = 0;
+          timer.classList.remove('hidden');
+          timer.innerText = "00:00";
+          recordingTimerInterval = setInterval(() => {
+            recordingSeconds++;
+            const mins = String(Math.floor(recordingSeconds / 60)).padStart(2, '0');
+            const secs = String(recordingSeconds % 60).padStart(2, '0');
+            timer.innerText = `${mins}:${secs}`;
+          }, 1000);
+
+        } catch (err) {
+          alert(`Microphone Access Denied: ${err.message}`);
+        }
+      } else {
+        mediaRecorder.stop();
+        clearInterval(recordingTimerInterval);
+        btn.classList.replace('bg-red-500/20', 'bg-sky-500/20');
+        btn.classList.replace('border-red-500/40', 'border-sky-500/40');
+        btn.classList.replace('text-red-400', 'text-sky-300');
+        recordText.innerText = "Re-record Voice";
+      }
+    }
+
+    // Submit Grievance Report
+    async function submitGrievanceReport() {
+      const lat = document.getElementById('input-lat').value;
+      const lon = document.getElementById('input-lon').value;
+      const category = document.getElementById('input-category').value;
+      const description = document.getElementById('input-description').value;
+      const imgInput = document.getElementById('input-image');
+      const banner = document.getElementById('submit-status-banner');
+      const submitBtn = document.getElementById('btn-submit');
+
+      if (!lat || !lon) {
+        alert("Please set GPS coordinates by clicking on the map or using device GPS.");
+        return;
+      }
+      if (!imgInput.files || imgInput.files.length === 0) {
+        alert("Please attach a photograph of the civic defect.");
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Processing Multimodal Pipeline...`;
+      lucide.createIcons();
+
+      const formData = new FormData();
+      formData.append('latitude', lat);
+      formData.append('longitude', lon);
+      formData.append('category_hint', category);
+      formData.append('description', description);
+      formData.append('image', imgInput.files[0]);
+
+      if (audioBlob) {
+        formData.append('audio', audioBlob, 'citizen_voice.webm');
+      }
+
+      try {
+        const res = await fetch('/api/v1/reports', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+
+        banner.classList.remove('hidden');
+        if (res.ok) {
+          if (data.status === 'CROWD_ESCALATED') {
+            banner.className = 'p-3 rounded-lg text-xs border bg-sky-950/80 border-sky-800 text-sky-200';
+            banner.innerHTML = `<strong>DBSCAN Clustered!</strong> ${data.message}`;
+          } else {
+            banner.className = 'p-3 rounded-lg text-xs border bg-emerald-950/80 border-emerald-800 text-emerald-200';
+            banner.innerHTML = `<strong>Ticket Generated!</strong> Tracking Code: <code>${data.tracking_code}</code> | SLA: ${data.sla_hours}h`;
+          }
+          await fetchTickets();
+          await fetchAnalytics();
+          if (data.ticket_id) {
+            selectTicketById(data.ticket_id);
+          }
+        } else {
+          banner.className = 'p-3 rounded-lg text-xs border bg-red-950/80 border-red-800 text-red-200';
+          banner.innerHTML = `<strong>Error:</strong> ${data.detail || 'Failed to submit report'}`;
+        }
+      } catch (err) {
+        banner.className = 'p-3 rounded-lg text-xs border bg-red-950/80 border-red-800 text-red-200';
+        banner.innerHTML = `<strong>Submission Exception:</strong> ${err.message}`;
+        banner.classList.remove('hidden');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<i data-lucide="send" class="w-4 h-4"></i> Submit Grievance to AI Triage`;
+        lucide.createIcons();
+      }
+    }
+
+    // Submit Proof of Fix Verification
+    async function submitProofOfFix() {
+      const ticketCode = document.getElementById('verify-ticket-input').value.trim();
+      const imgInput = document.getElementById('input-verify-image');
+      const banner = document.getElementById('verify-status-banner');
+      const btn = document.getElementById('btn-verify-submit');
+
+      if (!ticketCode) {
+        alert("Please enter the Ticket Tracking Code.");
+        return;
+      }
+      if (!imgInput.files || imgInput.files.length === 0) {
+        alert("Please select the 'After' repair photograph.");
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Auditing Repair With AI Vision...`;
+      lucide.createIcons();
+
+      const formData = new FormData();
+      formData.append('image', imgInput.files[0]);
+
+      try {
+        const res = await fetch(`/api/v1/tickets/${ticketCode}/verify-fix`, {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        banner.classList.remove('hidden');
+
+        if (res.ok) {
+          if (data.verified) {
+            banner.className = 'p-3 rounded-lg text-xs border bg-emerald-950/80 border-emerald-800 text-emerald-200';
+            banner.innerHTML = `<strong>VERIFIED RESOLVED!</strong> ${data.message} (Reduction: ${data.reduction_percentage}%)`;
+          } else {
+            banner.className = 'p-3 rounded-lg text-xs border bg-amber-950/80 border-amber-800 text-amber-200';
+            banner.innerHTML = `<strong>REPAIR REJECTED!</strong> ${data.message}`;
+          }
+          await fetchTickets();
+          await fetchAnalytics();
+          selectTicketById(data.ticket_id);
+        } else {
+          banner.className = 'p-3 rounded-lg text-xs border bg-red-950/80 border-red-800 text-red-200';
+          banner.innerHTML = `<strong>Verification Error:</strong> ${data.detail || 'Failed to verify'}`;
+        }
+      } catch (err) {
+        banner.className = 'p-3 rounded-lg text-xs border bg-red-950/80 border-red-800 text-red-200';
+        banner.innerHTML = `<strong>Exception:</strong> ${err.message}`;
+        banner.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i data-lucide="shield-check" class="w-4 h-4"></i> Run Proof-of-Fix Vision Audit`;
+        lucide.createIcons();
+      }
+    }
+
+    // Fetch and render tickets on map
+    async function fetchTickets(recenter = false) {
+      try {
+        const res = await fetch('/api/v1/tickets');
+        if (res.ok) {
+          allTickets = await res.json();
+          renderMarkers();
+          if (recenter && allTickets.length > 0) {
+            const first = allTickets[0];
+            map.setView([first.latitude, first.longitude], 14);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to fetch tickets", e);
+      }
+    }
+
+    function renderMarkers() {
+      markersLayer.clearLayers();
+      clusterRingsLayer.clearLayers();
+
+      const filtered = allTickets.filter(t => {
+        if (currentFilter === 'ALL') return true;
+        if (currentFilter === 'CRITICAL') return t.sla_status === 'AT_RISK' || t.severity_score >= 0.75;
+        if (currentFilter === 'OPEN') return t.status === 'OPEN' || t.status === 'IN_PROGRESS';
+        if (currentFilter === 'VERIFIED_RESOLVED') return t.status === 'VERIFIED_RESOLVED';
+        return true;
+      });
+
+      filtered.forEach(t => {
+        let markerClass = 'pulsing-marker-moderate';
+        if (t.status === 'VERIFIED_RESOLVED') {
+          markerClass = 'pulsing-marker-resolved';
+        } else if (t.severity_score >= 0.75 || t.sla_status === 'AT_RISK') {
+          markerClass = 'pulsing-marker-critical';
+        }
+
+        const customIcon = L.divIcon({
+          className: markerClass,
+          iconSize: [16, 16],
+          iconAnchor: [8, 8]
+        });
+
+        const marker = L.marker([t.latitude, t.longitude], { icon: customIcon });
+        marker.on('click', () => selectTicket(t));
+        marker.bindTooltip(`<b>#${t.tracking_code}</b>: ${t.category} (${Math.round(t.severity_score * 100)}%)`, { direction: 'top', offset: [0, -8] });
+        markersLayer.addLayer(marker);
+
+        // Render 35m DBSCAN clustering circle
+        if (t.status !== 'VERIFIED_RESOLVED') {
+          const circle = L.circle([t.latitude, t.longitude], {
+            radius: 35.0,
+            color: '#38bdf8',
+            weight: 1,
+            fillColor: '#0284c7',
+            fillOpacity: 0.12,
+            dashArray: '3, 4'
+          });
+          clusterRingsLayer.addLayer(circle);
+        }
+      });
+    }
+
+    function selectTicketById(id) {
+      const t = allTickets.find(item => item.id === id || item.tracking_code === id);
+      if (t) selectTicket(t);
+    }
+
+    function selectTicket(t) {
+      selectedTicketId = t.id;
+      document.getElementById('inspector-empty').classList.add('hidden');
+      document.getElementById('inspector-details').classList.remove('hidden');
+
+      document.getElementById('inspector-code').innerText = `#${t.tracking_code}`;
+      document.getElementById('card-category').innerText = t.category;
+      
+      const statusBadge = document.getElementById('card-status');
+      statusBadge.innerText = t.status;
+      if (t.status === 'VERIFIED_RESOLVED') {
+        statusBadge.className = 'px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800';
+      } else if (t.severity_score >= 0.75) {
+        statusBadge.className = 'px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-950 text-red-400 border border-red-800';
+      } else {
+        statusBadge.className = 'px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-950 text-amber-400 border border-amber-800';
+      }
+
+      document.getElementById('card-dept').innerText = t.department;
+      document.getElementById('card-address').innerText = t.address || `${t.latitude.toFixed(5)}°, ${t.longitude.toFixed(5)}° (${t.ward_name})`;
+
+      // SLA
+      const slaRemaining = t.sla_remaining_hours;
+      document.getElementById('card-sla-badge').innerText = `${slaRemaining > 0 ? slaRemaining : 0}h remaining`;
+      const slaPercent = Math.max(0, Math.min(100, (slaRemaining / t.sla_hours) * 100));
+      document.getElementById('card-sla-bar').style.width = `${slaPercent}%`;
+      document.getElementById('card-sla-status').innerText = t.sla_status;
+      document.getElementById('card-upvotes').innerText = `${t.upvote_count} citizen confirmation${t.upvote_count > 1 ? 's' : ''}`;
+
+      // Images
+      const img = document.getElementById('card-img');
+      img.src = t.annotated_image_url || t.original_image_url;
+      document.getElementById('card-conf-tag').innerText = `Visual Conf: ${Math.round(t.confidence_score * 100)}%`;
+
+      const afterContainer = document.getElementById('card-after-container');
+      if (t.verification_image_url) {
+        afterContainer.classList.remove('hidden');
+        document.getElementById('card-after-img').src = t.verification_image_url;
+      } else {
+        afterContainer.classList.add('hidden');
+      }
+
+      // Severity math breakdown
+      document.getElementById('card-sev-score').innerText = t.severity_score.toFixed(2);
+      const confTerm = (0.30 * t.confidence_score).toFixed(3);
+      const areaTerm = (0.35 * t.area_ratio).toFixed(3);
+      const hazardTerm = (0.20 * t.hazard_weight).toFixed(3);
+      const weatherTerm = (0.15 * t.weather_risk).toFixed(3);
+
+      document.getElementById('term-conf').innerText = `${confTerm} (C: ${t.confidence_score})`;
+      document.getElementById('term-area').innerText = `${areaTerm} (R: ${t.area_ratio})`;
+      document.getElementById('term-hazard').innerText = `${hazardTerm} (W: ${t.hazard_weight})`;
+      document.getElementById('term-weather').innerText = `${weatherTerm} (E: ${t.weather_risk})`;
+
+      // Weather
+      const weather = t.weather_details || {};
+      document.getElementById('weather-precip').innerText = `${weather.precipitation_mm || 0} mm/h`;
+      document.getElementById('weather-temp').innerText = `${weather.temperature_c || 25}°C`;
+      document.getElementById('weather-cond').innerText = weather.condition_text || 'Clear';
+
+      // Audit logs
+      const auditDiv = document.getElementById('card-audit-trail');
+      auditDiv.innerHTML = '';
+      if (t.audit_logs && t.audit_logs.length > 0) {
+        t.audit_logs.forEach(log => {
+          const item = document.createElement('div');
+          item.className = 'text-[10px] p-1.5 rounded bg-slate-900 border border-slate-800 text-slate-300';
+          item.innerHTML = `<span class="font-bold text-emerald-400">[${log.action}]</span> ${log.details || ''} <span class="text-slate-500 block text-[9px]">${new Date(log.timestamp).toLocaleTimeString()}</span>`;
+          auditDiv.appendChild(item);
+        });
+      }
+
+      // Prepopulate verify code in verify tab
+      document.getElementById('verify-ticket-input').value = t.tracking_code;
+
+      // Pan to ticket location
+      map.panTo([t.latitude, t.longitude]);
+      lucide.createIcons();
+    }
+
+    // Analytics & Charts
+    async function fetchAnalytics() {
+      try {
+        const res = await fetch('/api/v1/analytics');
+        if (res.ok) {
+          const data = await res.json();
+          document.getElementById('metric-active').innerText = data.active_tickets;
+          document.getElementById('metric-critical').innerText = data.sla_breach_risk.critical_under_24h;
+          document.getElementById('metric-severity').innerText = data.avg_severity.toFixed(2);
+          document.getElementById('metric-resolved').innerText = data.resolved_tickets;
+
+          updateDeptChart(data.department_load);
+        }
+      } catch (err) {
+        console.error("Analytics fetch error", err);
+      }
+    }
+
+    function initCharts() {
+      const ctx = document.getElementById('deptChart').getContext('2d');
+      deptChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['PWD', 'Jal Board', 'SWM', 'DISCOM'],
+          datasets: [{
+            label: 'Active Tickets',
+            data: [0, 0, 0, 0],
+            backgroundColor: ['#3b82f6', '#06b6d4', '#eab308', '#ec4899'],
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#94a3b8', font: { size: 10 } },
+              grid: { display: false }
+            },
+            y: {
+              ticks: { color: '#94a3b8', font: { size: 10 }, stepSize: 1 },
+              grid: { color: '#1e293b' }
+            }
+          }
+        }
+      });
+    }
+
+    function updateDeptChart(deptLoad) {
+      if (!deptChart) return;
+      const labels = Object.keys(deptLoad).map(k => k.replace(/Department|\(.*\)|Authority/g, '').trim());
+      const data = Object.values(deptLoad);
+      deptChart.data.labels = labels.length ? labels : ['PWD', 'Jal Board', 'SWM', 'DISCOM'];
+      deptChart.data.datasets[0].data = data.length ? data : [0, 0, 0, 0];
+      deptChart.update();
+    }
+
+    function filterMap(type) {
+      currentFilter = type;
+      ['flt-all', 'flt-crit', 'flt-open', 'flt-res'].forEach(id => {
+        document.getElementById(id).className = 'px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300';
+      });
+      const activeBtn = {
+        'ALL': 'flt-all',
+        'CRITICAL': 'flt-crit',
+        'OPEN': 'flt-open',
+        'VERIFIED_RESOLVED': 'flt-res'
+      }[type];
+      if (activeBtn) {
+        document.getElementById(activeBtn).className = 'px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-medium';
+      }
+      renderMarkers();
+    }
+
+    function switchLeftTab(tab) {
+      const repBtn = document.getElementById('tab-report-btn');
+      const verBtn = document.getElementById('tab-verify-btn');
+      const repDiv = document.getElementById('tab-report');
+      const verDiv = document.getElementById('tab-verify');
+
+      if (tab === 'report') {
+        repBtn.className = 'flex-1 py-3 text-xs font-semibold text-emerald-400 border-b-2 border-emerald-500 flex items-center justify-center gap-1.5';
+        verBtn.className = 'flex-1 py-3 text-xs font-semibold text-slate-400 hover:text-slate-200 border-b-2 border-transparent flex items-center justify-center gap-1.5';
+        repDiv.classList.remove('hidden');
+        verDiv.classList.add('hidden');
+      } else {
+        verBtn.className = 'flex-1 py-3 text-xs font-semibold text-emerald-400 border-b-2 border-emerald-500 flex items-center justify-center gap-1.5';
+        repBtn.className = 'flex-1 py-3 text-xs font-semibold text-slate-400 hover:text-slate-200 border-b-2 border-transparent flex items-center justify-center gap-1.5';
+        verDiv.classList.remove('hidden');
+        repDiv.classList.add('hidden');
+      }
+      lucide.createIcons();
+    }
+
+    function refreshData() {
+      const icon = document.getElementById('refresh-icon');
+      icon.classList.add('animate-spin');
+      Promise.all([fetchTickets(), fetchAnalytics()]).then(() => {
+        setTimeout(() => icon.classList.remove('animate-spin'), 600);
+      });
+    }
+  </script>
+</body>
+</html>

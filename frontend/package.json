@@ -1,0 +1,17 @@
+{
+  "name": "civicpulse-ai-frontend",
+  "version": "1.0.0",
+  "description": "CivicPulse AI Dashboard — Autonomous Multimodal Civic Grievance & Infrastructure Triage",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 3000 --directory ."
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "chart.js": "^4.4.1",
+    "lucide": "^0.344.0"
+  },
+  "keywords": ["civic", "geospatial", "yolo", "fastapi", "leaflet", "triage"],
+  "author": "CivicPulse Systems",
+  "license": "MIT"
+}

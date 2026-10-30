@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  civicpulse-backend:
+    build: .
+    container_name: civicpulse_engine
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./civicpulse.db
+      - NOMINATIM_USER_AGENT=CivicPulseAI-Engine/1.0 (civicpulse-contact@gov.local)
+    volumes:
+      - ./uploads:/app/uploads
+      - ./weights:/app/weights
+      - ./civicpulse.db:/app/civicpulse.db
