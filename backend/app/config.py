@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     
     # Model Weights
     YOLO_MODEL_PATH: str = os.path.join(WEIGHTS_DIR, "yolov8n.pt")
+    # Civic fine-tuned YOLO weights (run: python scripts/download_and_train.py)
+    CIVIC_YOLO_PATH: str = os.path.join(WEIGHTS_DIR, "civicpulse_yolo.pt")
+    # MobileNetV2 classifier weights (run: python scripts/train_classifier.py)
+    CLASSIFIER_WEIGHTS_PATH: str = os.path.join(WEIGHTS_DIR, "civicpulse_classifier.pt")
     WHISPER_MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", "base")
     
     # Live External APIs
