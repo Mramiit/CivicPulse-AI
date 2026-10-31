@@ -12,3 +12,16 @@ opencv-python>=4.9.0.80
 ultralytics>=8.1.0
 openai-whisper>=20231117
 aiofiles>=23.2.1
+
+# ── AI Model Training (Layer 2 classifier) ───────────────────────────────────
+# Install PyTorch from https://pytorch.org/get-started (choose CPU or CUDA)
+# CPU-only example (add to your pip install manually):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# GPU (CUDA 12.1):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+torch>=2.0.0
+torchvision>=0.15.0
+
+# ── Dataset download (YOLOv8 fine-tuning) ────────────────────────────────────
+# Required only to run scripts/download_and_train.py with Roboflow option
+roboflow>=1.1.0
