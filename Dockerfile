@@ -24,8 +24,8 @@ COPY . .
 # Ensure weights directory exists and copy model if downloaded in root
 RUN mkdir -p weights && (cp yolov8n.pt weights/yolov8n.pt 2>/dev/null || true)
 
-# Expose FastAPI port
-EXPOSE 8000
+# Expose Render default web port (10000)
+EXPOSE 10000
 
-# Run uvicorn server (binds dynamically to Render's $PORT or defaults to 8000)
-CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Run uvicorn server (binds dynamically to Render's $PORT or defaults to 10000)
+CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]

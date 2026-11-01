@@ -91,13 +91,13 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 # Serve Frontend HTML
 FRONTEND_FILE = os.path.join(settings.BASE_DIR, "frontend", "index.html")
 
-@app.get("/", include_in_schema=False)
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 async def serve_dashboard():
     if os.path.exists(FRONTEND_FILE):
         return FileResponse(FRONTEND_FILE)
     return {"message": "CivicPulse AI Engine active. API docs available at /docs"}
 
-@app.get("/health", tags=["System"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["System"])
 def health_check():
     return {
         "status": "online",
