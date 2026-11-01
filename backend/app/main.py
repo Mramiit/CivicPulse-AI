@@ -1,3 +1,4 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -44,20 +45,24 @@ def _ensure_schema_columns(bind_engine):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure all database tables exist on startup
+    # Ensure all database tables exist on startup (< 0.1s)
     Base.metadata.create_all(bind=engine)
     _ensure_schema_columns(engine)
 
-    # Pre-warm vision models on startup in background thread
-    # This ensures user requests never freeze or download models over HTTP!
-    try:
-        from backend.app.services.vision_service import get_yolo_model
-        await run_in_threadpool(get_yolo_model)
-        from backend.app.services.classifier_service import classify_civic_defect
-        print("[Startup] Vision models and classifier pre-warmed successfully.")
-    except Exception as e:
-        print(f"[Startup] Vision pre-warm notice: {e}")
+    # Pre-warm vision models in background task (non-blocking)
+    # This allows Uvicorn to bind and open the port in < 0.5s so Render's port scanner succeeds!
+    async def _bg_warmup():
+        try:
+            from backend.app.services.vision_service import get_yolo_model
+            await run_in_threadpool(get_yolo_model)
+            from backend.app.services.classifier_service import classify_civic_defect
+            print("[Startup] Vision models and classifier pre-warmed successfully in background.")
+        except Exception as e:
+            print(f"[Startup] Vision background warm-up notice: {e}")
 
+    asyncio.create_task(_bg_warmup())
+
+    # Immediately yield so Uvicorn binds to $PORT in under 1 second!
     yield
 
 

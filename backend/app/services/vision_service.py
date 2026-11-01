@@ -1,3 +1,4 @@
+import threading
 """
 CivicPulse AI — 3-Layer Civic Defect Vision Pipeline
 ======================================================
@@ -37,6 +38,7 @@ from backend.app.config import settings
 
 # ─── Model Cache ──────────────────────────────────────────────────────────────
 _YOLO_MODEL: Optional[object] = None
+_YOLO_LOCK = threading.Lock()
 
 CIVIC_YOLO_CLASSES = {
     "pothole", "manhole", "drain", "garbage", "trash", "crack", "water",
@@ -71,6 +73,10 @@ def get_yolo_model():
 
     if not HAS_YOLO:
         return None
+
+    with _YOLO_LOCK:
+        if _YOLO_MODEL is not None:
+            return _YOLO_MODEL
 
     candidates = [
         os.path.join(settings.WEIGHTS_DIR, "civicpulse_yolo.pt"),
