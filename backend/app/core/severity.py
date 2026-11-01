@@ -28,14 +28,10 @@ def calculate_multimodal_severity(
     Computes dynamic multimodal infrastructure severity:
     S = clip(0.30 * C_conf + 0.35 * R_area + 0.20 * W_hazard + 0.15 * E_weather, 0, 1)
 
-    Args:
-        c_conf: Visual model confidence [0.0, 1.0]
-        r_area: Bounding box surface ratio relative to image area [0.0, 1.0]
-        category: Defect classification label
-        e_weather: Live environmental precipitation/storm risk [0.0, 1.0]
-
-    Returns:
-        Tuple of (clamped_severity, detailed_mathematical_breakdown)
+    Includes Visual Evidence Verification Guard:
+    If visual confidence C_conf == 0 and area ratio R_area == 0 (clean image / normal scene),
+    unverified text or dropdown claims cannot escalate to High or Critical.
+    Severity is anchored to LOW priority pending municipal desk review.
     """
     w_hazard = get_hazard_weight(category)
     
@@ -45,7 +41,29 @@ def calculate_multimodal_severity(
     w_hazard = float(np.clip(w_hazard, 0.0, 1.0))
     e_weather = float(np.clip(e_weather, 0.0, 1.0))
 
-    # Compute weighted terms
+    # ── Visual Evidence Verification Guard ────────────────────────────────────
+    if c_conf == 0.0 and r_area == 0.0:
+        raw_score = 0.12 * w_hazard + 0.08 * e_weather
+        final_score = float(np.clip(raw_score, 0.05, 0.25))
+        final_score = round(final_score, 3)
+
+        breakdown = {
+            "confidence_raw": 0.0,
+            "confidence_term": 0.0,
+            "area_ratio_raw": 0.0,
+            "area_term": 0.0,
+            "hazard_weight_raw": round(w_hazard, 3),
+            "hazard_term": round(0.12 * w_hazard, 3),
+            "weather_risk_raw": round(e_weather, 3),
+            "weather_term": round(0.08 * e_weather, 3),
+            "final_severity": final_score,
+            "risk_level": "LOW",
+            "explanation": "No defect detected in visual evidence (clean/stable scene). Triage prioritized at Low pending municipal field verification.",
+            "formula": "S_unverified = min(0.25, 0.12*W_hazard + 0.08*E_weather)"
+        }
+        return final_score, breakdown
+
+    # ── Standard Multimodal Severity Calculation ──────────────────────────────
     term_conf = 0.30 * c_conf
     term_area = 0.35 * r_area
     term_hazard = 0.20 * w_hazard

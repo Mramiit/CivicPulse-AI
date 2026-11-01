@@ -34,6 +34,7 @@ class CitizenReportOut(BaseModel):
     urgency_keywords: Optional[str] = None
     image_path: str
     audio_path: Optional[str] = None
+    video_path: Optional[str] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
@@ -57,13 +58,17 @@ class TicketOut(BaseModel):
     sla_deadline: datetime
     sla_remaining_hours: float
     sla_status: str  # ON_TRACK, AT_RISK, BREACHED
+    media_type: str = "image"
     original_image_url: str
     annotated_image_url: Optional[str] = None
     verification_image_url: Optional[str] = None
+    video_url: Optional[str] = None
+    verification_video_url: Optional[str] = None
     trust_score: float
     perceptual_hash: Optional[str] = None
     weather_details: Optional[Dict[str, Any]] = None
     detection_details: Optional[List[Dict[str, Any]]] = None
+    video_analysis: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
     resolved_at: Optional[datetime] = None
@@ -91,6 +96,7 @@ class VerifyFixResponse(BaseModel):
     reduction_percentage: float
     detected_defects_after: int
     annotated_after_image_url: Optional[str] = None
+    verification_video_url: Optional[str] = None
     message: str
 
 class AnalyticsResponse(BaseModel):

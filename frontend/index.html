@@ -173,17 +173,18 @@
           </select>
         </div>
 
-        <!-- Camera / Defect Image Upload -->
+        <!-- Camera / Defect Media Upload (Photo or Video) -->
         <div>
-          <label class="text-xs font-semibold text-slate-300 block mb-1">Defect Photograph (Visual Evidence)</label>
-          <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl p-3 text-center bg-slate-950/60 transition cursor-pointer relative" onclick="document.getElementById('input-image').click()">
-            <input type="file" id="input-image" accept="image/*" class="hidden" onchange="handleImagePreview(event)" />
-            <div id="image-upload-prompt" class="space-y-1">
+          <label class="text-xs font-semibold text-slate-300 block mb-1">Defect Evidence (Photo or Video)</label>
+          <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl p-3 text-center bg-slate-950/60 transition cursor-pointer relative" onclick="document.getElementById('input-media').click()">
+            <input type="file" id="input-media" accept="image/*,video/mp4,video/webm,video/quicktime,video/x-msvideo" class="hidden" onchange="handleMediaPreview(event)" />
+            <div id="media-upload-prompt" class="space-y-1">
               <i data-lucide="camera" class="w-6 h-6 text-slate-400 mx-auto"></i>
-              <div class="text-xs text-slate-300 font-medium">Capture or Upload Defect Photo</div>
-              <div class="text-[10px] text-slate-500">Feeds YOLOv8 + OpenCV Structural Contours</div>
+              <div class="text-xs text-slate-300 font-medium">Upload Photo or Video Evidence</div>
+              <div class="text-[10px] text-slate-500">Photo → YOLOv8 + OpenCV | Video → Keyframe extraction + per-frame AI analysis</div>
             </div>
-            <img id="image-preview" class="hidden max-h-36 mx-auto rounded-lg object-cover border border-slate-700 mt-1" />
+            <img id="media-preview-img" class="hidden max-h-36 mx-auto rounded-lg object-cover border border-slate-700 mt-1" />
+            <video id="media-preview-video" class="hidden max-h-36 mx-auto rounded-lg border border-slate-700 mt-1" controls muted></video>
           </div>
         </div>
 
@@ -227,7 +228,7 @@
           <div class="text-xs font-semibold text-emerald-400 flex items-center gap-1.5 mb-1">
             <i data-lucide="check-check" class="w-4 h-4"></i> Closed-Loop Repair Verification
           </div>
-          <p class="text-[11px] text-slate-400">Upload an 'After' repair photograph. AI vision compares defect counts: marks resolved only if defects drop to 0 or severity reduces by &gt;80%.</p>
+          <p class="text-[11px] text-slate-400">Upload an 'After' repair photo or video. AI vision compares defect counts: marks resolved only if defects drop to 0 or severity reduces by &gt;80%.</p>
         </div>
 
         <div>
@@ -236,14 +237,15 @@
         </div>
 
         <div>
-          <label class="text-xs font-semibold text-slate-300 block mb-1">After-Repair Photograph</label>
-          <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl p-3 text-center bg-slate-950/60 transition cursor-pointer relative" onclick="document.getElementById('input-verify-image').click()">
-            <input type="file" id="input-verify-image" accept="image/*" class="hidden" onchange="handleVerifyImagePreview(event)" />
+          <label class="text-xs font-semibold text-slate-300 block mb-1">After-Repair Evidence (Photo or Video)</label>
+          <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl p-3 text-center bg-slate-950/60 transition cursor-pointer relative" onclick="document.getElementById('input-verify-media').click()">
+            <input type="file" id="input-verify-media" accept="image/*,video/mp4,video/webm,video/quicktime,video/x-msvideo" class="hidden" onchange="handleVerifyMediaPreview(event)" />
             <div id="verify-upload-prompt" class="space-y-1">
               <i data-lucide="image-plus" class="w-6 h-6 text-slate-400 mx-auto"></i>
-              <div class="text-xs text-slate-300 font-medium">Upload Contractor 'After' Photo</div>
+              <div class="text-xs text-slate-300 font-medium">Upload 'After' Photo or Video</div>
             </div>
-            <img id="verify-image-preview" class="hidden max-h-36 mx-auto rounded-lg object-cover border border-slate-700 mt-1" />
+            <img id="verify-preview-img" class="hidden max-h-36 mx-auto rounded-lg object-cover border border-slate-700 mt-1" />
+            <video id="verify-preview-video" class="hidden max-h-36 mx-auto rounded-lg border border-slate-700 mt-1" controls muted></video>
           </div>
         </div>
 
@@ -313,6 +315,13 @@
               <i data-lucide="map-pin" class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5"></i>
               <span id="card-address" class="line-clamp-2">Address</span>
             </div>
+            <!-- Media type badge -->
+            <div id="card-media-badge" class="hidden">
+              <span class="text-[10px] px-2 py-0.5 rounded bg-purple-950 text-purple-400 border border-purple-800 flex items-center gap-1 w-fit">
+                <i data-lucide="video" class="w-3 h-3"></i>
+                <span id="card-media-type-text">Video Evidence</span>
+              </span>
+            </div>
           </div>
 
           <!-- Dynamic SLA Countdown & Crowd Confirmations -->
@@ -337,7 +346,7 @@
             </div>
           </div>
 
-          <!-- Annotated Image / Before-After Preview -->
+          <!-- Annotated Image / Video / Before-After Preview -->
           <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
             <div class="flex items-center justify-between text-xs font-semibold text-slate-300">
               <span class="flex items-center gap-1.5">
@@ -348,11 +357,33 @@
             <div class="rounded-lg overflow-hidden border border-slate-800 relative bg-black">
               <img id="card-img" class="w-full h-48 object-contain" src="" alt="Defect detection" />
             </div>
+
+            <!-- Video player (shown when media_type === "video") -->
+            <div id="card-video-section" class="hidden pt-2 border-t border-slate-800 space-y-1">
+              <span class="text-[11px] text-purple-400 font-semibold flex items-center gap-1">
+                <i data-lucide="film" class="w-3 h-3"></i> Original Video Evidence
+              </span>
+              <video id="card-video-player" class="w-full rounded border border-purple-900/60" controls preload="metadata"></video>
+              <div id="card-video-meta" class="text-[10px] text-slate-500 flex items-center gap-3">
+                <span id="video-meta-duration"></span>
+                <span id="video-meta-frames"></span>
+              </div>
+            </div>
+
+            <!-- After-repair image/video -->
             <div id="card-after-container" class="hidden pt-2 border-t border-slate-800 space-y-1">
               <span class="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
                 <i data-lucide="shield-check" class="w-3 h-3"></i> Verified "After" Proof of Fix
               </span>
               <img id="card-after-img" class="w-full h-36 object-contain rounded border border-emerald-900/60" src="" alt="After Repair" />
+            </div>
+
+            <!-- After-repair video (when video proof used) -->
+            <div id="card-after-video-container" class="hidden pt-2 border-t border-slate-800 space-y-1">
+              <span class="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                <i data-lucide="shield-check" class="w-3 h-3"></i> Verified "After" Video Proof
+              </span>
+              <video id="card-after-video" class="w-full rounded border border-emerald-900/60" controls preload="metadata"></video>
             </div>
           </div>
 
@@ -472,6 +503,14 @@
     // Charts
     let deptChart = null;
 
+    // Video file extensions for client-side detection
+    const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v', '.flv', '.wmv'];
+    function isVideoFile(filename) {
+      if (!filename) return false;
+      const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+      return VIDEO_EXTENSIONS.includes(ext);
+    }
+
     // Initialize Map and App on Load
     document.addEventListener("DOMContentLoaded", () => {
       lucide.createIcons();
@@ -577,27 +616,51 @@
       );
     }
 
-    // Media & Voice handling
-    function handleImagePreview(e) {
+    // ── Media Preview Handlers (Image + Video) ──────────────────────────────────
+
+    function handleMediaPreview(e) {
       const file = e.target.files[0];
-      if (file) {
-        const preview = document.getElementById('image-preview');
-        const prompt = document.getElementById('image-upload-prompt');
-        preview.src = URL.createObjectURL(file);
-        preview.classList.remove('hidden');
-        prompt.classList.add('hidden');
+      if (!file) return;
+
+      const imgPreview = document.getElementById('media-preview-img');
+      const vidPreview = document.getElementById('media-preview-video');
+      const prompt = document.getElementById('media-upload-prompt');
+
+      // Reset both previews
+      imgPreview.classList.add('hidden');
+      vidPreview.classList.add('hidden');
+
+      if (file.type.startsWith('video/') || isVideoFile(file.name)) {
+        // Show video preview
+        vidPreview.src = URL.createObjectURL(file);
+        vidPreview.classList.remove('hidden');
+      } else {
+        // Show image preview
+        imgPreview.src = URL.createObjectURL(file);
+        imgPreview.classList.remove('hidden');
       }
+      prompt.classList.add('hidden');
     }
 
-    function handleVerifyImagePreview(e) {
+    function handleVerifyMediaPreview(e) {
       const file = e.target.files[0];
-      if (file) {
-        const preview = document.getElementById('verify-image-preview');
-        const prompt = document.getElementById('verify-upload-prompt');
-        preview.src = URL.createObjectURL(file);
-        preview.classList.remove('hidden');
-        prompt.classList.add('hidden');
+      if (!file) return;
+
+      const imgPreview = document.getElementById('verify-preview-img');
+      const vidPreview = document.getElementById('verify-preview-video');
+      const prompt = document.getElementById('verify-upload-prompt');
+
+      imgPreview.classList.add('hidden');
+      vidPreview.classList.add('hidden');
+
+      if (file.type.startsWith('video/') || isVideoFile(file.name)) {
+        vidPreview.src = URL.createObjectURL(file);
+        vidPreview.classList.remove('hidden');
+      } else {
+        imgPreview.src = URL.createObjectURL(file);
+        imgPreview.classList.remove('hidden');
       }
+      prompt.classList.add('hidden');
     }
 
     async function toggleVoiceRecording() {
@@ -657,7 +720,7 @@
       const lon = document.getElementById('input-lon').value;
       const category = document.getElementById('input-category').value;
       const description = document.getElementById('input-description').value;
-      const imgInput = document.getElementById('input-image');
+      const mediaInput = document.getElementById('input-media');
       const banner = document.getElementById('submit-status-banner');
       const submitBtn = document.getElementById('btn-submit');
 
@@ -665,13 +728,18 @@
         alert("Please set GPS coordinates by clicking on the map or using device GPS.");
         return;
       }
-      if (!imgInput.files || imgInput.files.length === 0) {
-        alert("Please attach a photograph of the civic defect.");
+      if (!mediaInput.files || mediaInput.files.length === 0) {
+        alert("Please attach a photograph or video of the civic defect.");
         return;
       }
 
+      const file = mediaInput.files[0];
+      const isVideo = file.type.startsWith('video/') || isVideoFile(file.name);
+
       submitBtn.disabled = true;
-      submitBtn.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Processing Multimodal Pipeline...`;
+      submitBtn.innerHTML = isVideo
+        ? `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Extracting keyframes & running AI vision on video...`
+        : `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Processing Multimodal Pipeline...`;
       lucide.createIcons();
 
       const formData = new FormData();
@@ -679,7 +747,7 @@
       formData.append('longitude', lon);
       formData.append('category_hint', category);
       formData.append('description', description);
-      formData.append('image', imgInput.files[0]);
+      formData.append('media', file);
 
       if (audioBlob) {
         formData.append('audio', audioBlob, 'citizen_voice.webm');
@@ -698,8 +766,9 @@
             banner.className = 'p-3 rounded-lg text-xs border bg-sky-950/80 border-sky-800 text-sky-200';
             banner.innerHTML = `<strong>DBSCAN Clustered!</strong> ${data.message}`;
           } else {
+            const mediaNote = data.media_type === 'video' ? ' | 🎬 Video analyzed' : '';
             banner.className = 'p-3 rounded-lg text-xs border bg-emerald-950/80 border-emerald-800 text-emerald-200';
-            banner.innerHTML = `<strong>Ticket Generated!</strong> Tracking Code: <code>${data.tracking_code}</code> | SLA: ${data.sla_hours}h`;
+            banner.innerHTML = `<strong>Ticket Generated!</strong> Tracking Code: <code>${data.tracking_code}</code> | SLA: ${data.sla_hours}h${mediaNote}`;
           }
           await fetchTickets();
           await fetchAnalytics();
@@ -724,7 +793,7 @@
     // Submit Proof of Fix Verification
     async function submitProofOfFix() {
       const ticketCode = document.getElementById('verify-ticket-input').value.trim();
-      const imgInput = document.getElementById('input-verify-image');
+      const mediaInput = document.getElementById('input-verify-media');
       const banner = document.getElementById('verify-status-banner');
       const btn = document.getElementById('btn-verify-submit');
 
@@ -732,17 +801,22 @@
         alert("Please enter the Ticket Tracking Code.");
         return;
       }
-      if (!imgInput.files || imgInput.files.length === 0) {
-        alert("Please select the 'After' repair photograph.");
+      if (!mediaInput.files || mediaInput.files.length === 0) {
+        alert("Please select the 'After' repair photo or video.");
         return;
       }
 
+      const file = mediaInput.files[0];
+      const isVideo = file.type.startsWith('video/') || isVideoFile(file.name);
+
       btn.disabled = true;
-      btn.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Auditing Repair With AI Vision...`;
+      btn.innerHTML = isVideo
+        ? `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Analyzing repair video with AI...`
+        : `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Auditing Repair With AI Vision...`;
       lucide.createIcons();
 
       const formData = new FormData();
-      formData.append('image', imgInput.files[0]);
+      formData.append('media', file);
 
       try {
         const res = await fetch(`/api/v1/tickets/${ticketCode}/verify-fix`, {
@@ -822,8 +896,9 @@
         });
 
         const marker = L.marker([t.latitude, t.longitude], { icon: customIcon });
+        const mediaIcon = t.media_type === 'video' ? '🎬' : '📷';
         marker.on('click', () => selectTicket(t));
-        marker.bindTooltip(`<b>#${t.tracking_code}</b>: ${t.category} (${Math.round(t.severity_score * 100)}%)`, { direction: 'top', offset: [0, -8] });
+        marker.bindTooltip(`<b>#${t.tracking_code}</b> ${mediaIcon}: ${t.category} (${Math.round(t.severity_score * 100)}%)`, { direction: 'top', offset: [0, -8] });
         markersLayer.addLayer(marker);
 
         // Render 35m DBSCAN clustering circle
@@ -867,6 +942,15 @@
       document.getElementById('card-dept').innerText = t.department;
       document.getElementById('card-address').innerText = t.address || `${t.latitude.toFixed(5)}°, ${t.longitude.toFixed(5)}° (${t.ward_name})`;
 
+      // Media type badge
+      const mediaBadge = document.getElementById('card-media-badge');
+      if (t.media_type === 'video') {
+        mediaBadge.classList.remove('hidden');
+        document.getElementById('card-media-type-text').innerText = 'Video Evidence';
+      } else {
+        mediaBadge.classList.add('hidden');
+      }
+
       // SLA
       const slaRemaining = t.sla_remaining_hours;
       document.getElementById('card-sla-badge').innerText = `${slaRemaining > 0 ? slaRemaining : 0}h remaining`;
@@ -878,14 +962,41 @@
       // Images
       const img = document.getElementById('card-img');
       img.src = t.annotated_image_url || t.original_image_url;
-      document.getElementById('card-conf-tag').innerText = `Visual Conf: ${Math.round(t.confidence_score * 100)}%`;
+      const confTag = document.getElementById('card-conf-tag');
+      if (t.confidence_score > 0) {
+        confTag.innerText = Visual Conf: %;
+        confTag.className = 'text-[10px] text-slate-400 font-mono';
+      } else {
+        confTag.innerText = 'Visual: Clean / No Defect Detected';
+        confTag.className = 'text-[10px] text-emerald-400 font-semibold font-mono';
+      }
 
+      // Video player (original video evidence)
+      const videoSection = document.getElementById('card-video-section');
+      if (t.media_type === 'video' && t.video_url) {
+        videoSection.classList.remove('hidden');
+        document.getElementById('card-video-player').src = t.video_url;
+        const va = t.video_analysis || {};
+        document.getElementById('video-meta-duration').innerText = va.duration_seconds ? `Duration: ${va.duration_seconds}s` : '';
+        document.getElementById('video-meta-frames').innerText = va.frames_analyzed ? `Frames analyzed: ${va.frames_analyzed}` : '';
+      } else {
+        videoSection.classList.add('hidden');
+      }
+
+      // After-repair image
       const afterContainer = document.getElementById('card-after-container');
-      if (t.verification_image_url) {
+      const afterVideoContainer = document.getElementById('card-after-video-container');
+      if (t.verification_video_url) {
+        afterContainer.classList.add('hidden');
+        afterVideoContainer.classList.remove('hidden');
+        document.getElementById('card-after-video').src = t.verification_video_url;
+      } else if (t.verification_image_url) {
         afterContainer.classList.remove('hidden');
+        afterVideoContainer.classList.add('hidden');
         document.getElementById('card-after-img').src = t.verification_image_url;
       } else {
         afterContainer.classList.add('hidden');
+        afterVideoContainer.classList.add('hidden');
       }
 
       // Severity math breakdown
@@ -899,6 +1010,22 @@
       document.getElementById('term-area').innerText = `${areaTerm} (R: ${t.area_ratio})`;
       document.getElementById('term-hazard').innerText = `${hazardTerm} (W: ${t.hazard_weight})`;
       document.getElementById('term-weather').innerText = `${weatherTerm} (E: ${t.weather_risk})`;
+
+      // Severity level badge color
+      const sevLevel = document.getElementById('card-sev-level');
+      if (t.severity_score >= 0.75) {
+        sevLevel.innerText = 'CRITICAL';
+        sevLevel.className = 'text-[10px] px-2 py-0.5 rounded font-bold bg-red-950 text-red-400 border border-red-800';
+      } else if (t.severity_score >= 0.5) {
+        sevLevel.innerText = 'HIGH';
+        sevLevel.className = 'text-[10px] px-2 py-0.5 rounded font-bold bg-orange-950 text-orange-400 border border-orange-800';
+      } else if (t.severity_score >= 0.25) {
+        sevLevel.innerText = 'MODERATE';
+        sevLevel.className = 'text-[10px] px-2 py-0.5 rounded font-bold bg-amber-950 text-amber-400 border border-amber-800';
+      } else {
+        sevLevel.innerText = 'LOW';
+        sevLevel.className = 'text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-950 text-emerald-400 border border-emerald-800';
+      }
 
       // Weather
       const weather = t.weather_details || {};

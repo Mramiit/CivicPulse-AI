@@ -13,6 +13,7 @@ from backend.app.models.ticket import Ticket, AuditLog
 from backend.app.schemas.ticket import VerifyFixResponse
 from backend.app.services.vision_service import run_vision_pipeline
 from backend.app.core.severity import calculate_multimodal_severity
+from backend.app.services.video_service import is_video_file, analyze_video
 
 router = APIRouter()
 
@@ -48,7 +49,14 @@ def serialize_ticket(t: Ticket) -> Dict[str, Any]:
         except Exception:
             pass
 
-    return {
+    video_data = {}
+    if t.video_analysis_details:
+        try:
+            video_data = json.loads(t.video_analysis_details)
+        except Exception:
+            pass
+
+    result = {
         "id": t.id,
         "tracking_code": t.tracking_code,
         "category": t.category,
@@ -68,13 +76,17 @@ def serialize_ticket(t: Ticket) -> Dict[str, Any]:
         "sla_deadline": t.sla_deadline.isoformat(),
         "sla_remaining_hours": remaining_hours,
         "sla_status": sla_status,
+        "media_type": t.media_type or "image",
         "original_image_url": f"/uploads/{t.original_image_path}",
         "annotated_image_url": f"/uploads/{t.annotated_image_path}" if t.annotated_image_path else None,
         "verification_image_url": f"/uploads/{t.verification_image_path}" if t.verification_image_path else None,
+        "video_url": f"/uploads/{t.video_path}" if t.video_path else None,
+        "verification_video_url": f"/uploads/{t.verification_video_path}" if t.verification_video_path else None,
         "trust_score": t.trust_score,
         "perceptual_hash": t.perceptual_hash,
         "weather_details": weather_data,
         "detection_details": detection_data,
+        "video_analysis": video_data if video_data else None,
         "created_at": t.created_at.isoformat(),
         "updated_at": t.updated_at.isoformat(),
         "resolved_at": t.resolved_at.isoformat() if t.resolved_at else None,
@@ -89,6 +101,8 @@ def serialize_ticket(t: Ticket) -> Dict[str, Any]:
             for log in t.audit_logs
         ]
     }
+
+    return result
 
 
 @router.get("/tickets")
@@ -150,15 +164,27 @@ def get_ticket(ticket_id: str, db: Session = Depends(get_db)):
 @router.post("/tickets/{ticket_id}/verify-fix", response_model=VerifyFixResponse)
 async def verify_proof_of_fix(
     ticket_id: str,
-    image: UploadFile = File(..., description="Post-repair 'After' verification photo"),
+    media: Optional[UploadFile] = File(None, description="Post-repair 'After' verification photo OR video"),
+    image: Optional[UploadFile] = File(None, description="Backwards-compatible alias for post-repair photo/video"),
     db: Session = Depends(get_db)
 ):
     """
-    Closed-Loop 'Proof-of-Fix' Verification:
-    Contractor or citizen submits an 'After' photo.
-    Runs vision pipeline: only transitions ticket to VERIFIED_RESOLVED if
-    defect bounding box count drops to zero OR severity drops by > 80%.
+    Closed-Loop 'Proof-of-Fix' Verification — supports BOTH image and video:
+
+    Image: Runs vision pipeline directly on the uploaded photo.
+    Video: Extracts keyframes, runs vision on each, picks worst-case frame.
+
+    Transitions ticket to VERIFIED_RESOLVED only if:
+      - Detected defect bounding box count drops to ZERO, OR
+      - Calculated severity drops by > 80% compared to original.
     """
+    upload = media or image
+    if upload is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A verification photo or video is required (pass 'media' or 'image')."
+        )
+
     ticket = db.query(Ticket).filter(
         (Ticket.id == ticket_id) | (Ticket.tracking_code == ticket_id.upper())
     ).first()
@@ -179,28 +205,44 @@ async def verify_proof_of_fix(
             message="Ticket is already verified and marked RESOLVED."
         )
 
-    # Save verification image
     file_id = uuid.uuid4().hex
-    img_ext = os.path.splitext(image.filename)[1] or ".jpg"
-    after_img_name = f"after_{file_id}{img_ext}"
-    after_img_path = os.path.join(settings.UPLOAD_DIR, after_img_name)
+    file_ext = os.path.splitext(upload.filename or "")[1].lower() or ".jpg"
+    is_video = is_video_file(upload.filename or "")
+    content = await upload.read()
 
-    content = await image.read()
-    with open(after_img_path, "wb") as f:
-        f.write(content)
+    if is_video:
+        # ── VIDEO PROOF-OF-FIX ────────────────────────────────────────────────
+        verify_video_name = f"verify_video_{file_id}{file_ext}"
+        verify_video_path = os.path.join(settings.UPLOAD_DIR, verify_video_name)
+        with open(verify_video_path, "wb") as f:
+            f.write(content)
 
-    annotated_after_name = f"annotated_after_{file_id}.jpg"
-    annotated_after_path = os.path.join(settings.UPLOAD_DIR, annotated_after_name)
+        detections, c_conf, r_area, best_frame, annotated_path, video_meta = \
+            analyze_video(verify_video_path, settings.UPLOAD_DIR, max_frames=8)
 
-    # Run vision pipeline on After image
-    detections, c_conf, r_area, _ = run_vision_pipeline(after_img_path, annotated_after_path)
-    
-    # Calculate After severity
+        annotated_after_name = os.path.basename(annotated_path) if annotated_path else ""
+        ticket.verification_video_path = verify_video_name
+        media_label = f"Video ({video_meta.get('duration_seconds', 0)}s, {video_meta.get('frames_analyzed', 0)} frames)"
+
+    else:
+        # ── IMAGE PROOF-OF-FIX (existing logic) ──────────────────────────────
+        after_img_name = f"after_{file_id}{file_ext}"
+        after_img_path = os.path.join(settings.UPLOAD_DIR, after_img_name)
+        with open(after_img_path, "wb") as f:
+            f.write(content)
+
+        annotated_after_name = f"annotated_after_{file_id}.jpg"
+        annotated_after_path = os.path.join(settings.UPLOAD_DIR, annotated_after_name)
+
+        detections, c_conf, r_area, _ = run_vision_pipeline(after_img_path, annotated_after_path)
+        media_label = "Image"
+
+    # ── Severity comparison ───────────────────────────────────────────────────
     after_severity, _ = calculate_multimodal_severity(
         c_conf=c_conf if detections else 0.0,
         r_area=r_area if detections else 0.0,
         category=ticket.category,
-        e_weather=0.0  # Normalized weather for repair inspection
+        e_weather=0.0  # Normalised weather for repair inspection
     )
 
     initial_severity = max(0.01, ticket.severity_score)
@@ -208,7 +250,6 @@ async def verify_proof_of_fix(
     reduction_percentage = round(max(0.0, severity_reduction * 100.0), 1)
 
     defect_count = len(detections)
-    # Verification condition: zero bounding boxes OR severity drops by > 80%
     is_verified = (defect_count == 0) or (reduction_percentage >= 80.0)
 
     now = datetime.now(timezone.utc)
@@ -219,13 +260,13 @@ async def verify_proof_of_fix(
         ticket.resolved_at = now
         log_action = "PROOF_OF_FIX_ACCEPTED"
         message = (
-            f"Verification SUCCESS! Defect count: {defect_count}. "
+            f"Verification SUCCESS via {media_label}! Defect count: {defect_count}. "
             f"Severity reduced by {reduction_percentage}%. Ticket transitioned to VERIFIED_RESOLVED."
         )
     else:
         log_action = "PROOF_OF_FIX_REJECTED"
         message = (
-            f"Verification REJECTED. Defect still detectable ({defect_count} anomalies). "
+            f"Verification REJECTED via {media_label}. Defect still detectable ({defect_count} anomalies). "
             f"Severity reduction was only {reduction_percentage}% (Required: >80%)."
         )
 
@@ -248,6 +289,7 @@ async def verify_proof_of_fix(
         after_severity=after_severity,
         reduction_percentage=reduction_percentage,
         detected_defects_after=defect_count,
-        annotated_after_image_url=f"/uploads/{annotated_after_name}",
+        annotated_after_image_url=f"/uploads/{annotated_after_name}" if annotated_after_name else None,
+        verification_video_url=f"/uploads/{ticket.verification_video_path}" if ticket.verification_video_path else None,
         message=message
     )

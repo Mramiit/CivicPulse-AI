@@ -41,12 +41,18 @@ class Ticket(Base):
     original_image_path = Column(String(255), nullable=False)
     annotated_image_path = Column(String(255), nullable=True)
     verification_image_path = Column(String(255), nullable=True)
+    # Video evidence support
+    video_path = Column(String(255), nullable=True)            # Original uploaded video
+    verification_video_path = Column(String(255), nullable=True)  # Proof-of-fix video
+    media_type = Column(String(10), default="image")           # "image" or "video"
+
     trust_score = Column(Float, default=1.0)
     perceptual_hash = Column(String(64), index=True, nullable=True)
     
     # Rich Context Metadata (Stored as JSON Text)
     weather_details = Column(Text, nullable=True)
     detection_details = Column(Text, nullable=True)
+    video_analysis_details = Column(Text, nullable=True)       # Video frame analysis results
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -69,6 +75,7 @@ class CitizenReport(Base):
     urgency_keywords = Column(Text, nullable=True)  # JSON list
     image_path = Column(String(255), nullable=False)
     audio_path = Column(String(255), nullable=True)
+    video_path = Column(String(255), nullable=True)            # Video evidence from citizen
     perceptual_hash = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

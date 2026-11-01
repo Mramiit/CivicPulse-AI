@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from sqlalchemy import text
 
 from backend.app.config import settings
 from backend.app.db.session import engine
@@ -11,11 +12,42 @@ from backend.app.db.base import Base
 import backend.app.models.ticket  # Registers models on Base.metadata
 from backend.app.api.v1 import api_router
 
+
+def _ensure_schema_columns(bind_engine):
+    """Safely adds newly introduced columns if running against an existing SQLite DB."""
+    if not str(bind_engine.url).startswith("sqlite"):
+        return
+
+    new_columns = [
+        ("tickets", "video_path", "VARCHAR(255)"),
+        ("tickets", "verification_video_path", "VARCHAR(255)"),
+        ("tickets", "media_type", "VARCHAR(10) DEFAULT 'image'"),
+        ("tickets", "video_analysis_details", "TEXT"),
+        ("citizen_reports", "video_path", "VARCHAR(255)"),
+    ]
+
+    try:
+        with bind_engine.connect() as conn:
+            for table, col, col_type in new_columns:
+                try:
+                    res = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+                    existing_cols = [row[1] for row in res]
+                    if col not in existing_cols:
+                        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+                        conn.commit()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Ensure all database tables exist on startup
     Base.metadata.create_all(bind=engine)
+    _ensure_schema_columns(engine)
     yield
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -33,7 +65,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount uploads directory for static image serving
+# Mount uploads directory for static media serving (images + videos)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 # Include API v1 Router
