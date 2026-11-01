@@ -53,7 +53,8 @@ async def lifespan(app: FastAPI):
     try:
         from backend.app.services.vision_service import get_yolo_model
         await run_in_threadpool(get_yolo_model)
-        print("[Startup] Vision models pre-warmed successfully.")
+        from backend.app.services.classifier_service import classify_civic_defect
+        print("[Startup] Vision models and classifier pre-warmed successfully.")
     except Exception as e:
         print(f"[Startup] Vision pre-warm notice: {e}")
 

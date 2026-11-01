@@ -93,8 +93,9 @@ def _get_transform():
 
 def get_classifier(weights_path: Optional[str] = None):
     """
-    Returns the classifier model, loading from weights_path if fine-tuned
-    weights exist, otherwise uses pretrained ImageNet backbone (zero-shot mode).
+    Returns the classifier model if fine-tuned weights exist,
+    otherwise returns (None, None) so zero-shot heuristic mode runs instantly
+    without downloading unnecessary ImageNet weights.
     """
     global _CLASSIFIER_MODEL, _CLASSIFIER_TRANSFORM
 
@@ -104,21 +105,20 @@ def get_classifier(weights_path: Optional[str] = None):
     if not HAS_TORCH:
         return None, None
 
+    # Only build and download MobileNet if fine-tuned weights actually exist to load!
+    if not weights_path or not os.path.exists(weights_path):
+        return None, None
+
     try:
         model = _build_mobilenet_classifier()
         if model is None:
-            # Fallback cleanly to zero-shot heuristic mode
             return None, None
 
         transform = _get_transform()
-
-        if weights_path and os.path.exists(weights_path):
-            print(f"[CivicClassifier] Loading fine-tuned weights: {weights_path}")
-            state = torch.load(weights_path, map_location="cpu")
-            model.load_state_dict(state)
-            print("[CivicClassifier] Fine-tuned weights loaded ✓")
-        else:
-            print("[CivicClassifier] No fine-tuned weights found → running in zero-shot mode")
+        print(f"[CivicClassifier] Loading fine-tuned weights: {weights_path}")
+        state = torch.load(weights_path, map_location="cpu")
+        model.load_state_dict(state)
+        print("[CivicClassifier] Fine-tuned weights loaded ✓")
 
         model.eval()
         _CLASSIFIER_MODEL = model
