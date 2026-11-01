@@ -1,4 +1,3 @@
-import asyncio
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -6,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy import text
-from starlette.concurrency import run_in_threadpool
 
 from backend.app.config import settings
 from backend.app.db.session import engine
@@ -24,8 +22,6 @@ def _ensure_schema_columns(bind_engine):
         ("tickets", "video_path", "VARCHAR(255)"),
         ("tickets", "verification_video_path", "VARCHAR(255)"),
         ("tickets", "media_type", "VARCHAR(10) DEFAULT 'image'"),
-        ("tickets", "video_analysis_details", "TEXT"),
-        ("citizen_reports", "video_path", "VARCHAR(255)"),
     ]
 
     try:
@@ -45,24 +41,12 @@ def _ensure_schema_columns(bind_engine):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure all database tables exist on startup (< 0.1s)
+    # Ensure all database tables exist on startup (< 0.05s)
     Base.metadata.create_all(bind=engine)
     _ensure_schema_columns(engine)
+    print(f"[{settings.PROJECT_NAME}] Engine online. Models ready on disk for on-demand inference.")
 
-    # Pre-warm vision models in background task (non-blocking)
-    # This allows Uvicorn to bind and open the port in < 0.5s so Render's port scanner succeeds!
-    async def _bg_warmup():
-        try:
-            from backend.app.services.vision_service import get_yolo_model
-            await run_in_threadpool(get_yolo_model)
-            from backend.app.services.classifier_service import classify_civic_defect
-            print("[Startup] Vision models and classifier pre-warmed successfully in background.")
-        except Exception as e:
-            print(f"[Startup] Vision background warm-up notice: {e}")
-
-    asyncio.create_task(_bg_warmup())
-
-    # Immediately yield so Uvicorn binds to $PORT in under 1 second!
+    # Yield immediately so Uvicorn binds to port in < 0.1s and never freezes the event loop!
     yield
 
 
