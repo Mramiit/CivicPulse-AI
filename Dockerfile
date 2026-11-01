@@ -27,5 +27,5 @@ RUN mkdir -p weights && (cp yolov8n.pt weights/yolov8n.pt 2>/dev/null || true)
 # Expose FastAPI port
 EXPOSE 8000
 
-# Run uvicorn server
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run uvicorn server (binds dynamically to Render's $PORT or defaults to 8000)
+CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

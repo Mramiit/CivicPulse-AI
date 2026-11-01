@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: civicpulse-ai
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8000
