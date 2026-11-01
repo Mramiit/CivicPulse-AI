@@ -964,7 +964,7 @@
       img.src = t.annotated_image_url || t.original_image_url;
       const confTag = document.getElementById('card-conf-tag');
       if (t.confidence_score > 0) {
-        confTag.innerText = Visual Conf: %;
+        confTag.innerText = 'Visual Conf: ' + Math.round(t.confidence_score * 100) + '%';
         confTag.className = 'text-[10px] text-slate-400 font-mono';
       } else {
         confTag.innerText = 'Visual: Clean / No Defect Detected';
