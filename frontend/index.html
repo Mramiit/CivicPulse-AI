@@ -65,6 +65,10 @@
       box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
       border-radius: 50%;
     }
+        /* Dark mode CSS filter for standard keyless OpenStreetMap tiles */
+    .dark-tiles {
+      filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+    }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #0f172a; }
     ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
@@ -536,10 +540,10 @@
       map = L.map('map', { zoomControl: false }).setView([28.6139, 77.2090], 13);
       L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-      // CartoDB Dark Matter tile layer
-      const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-        subdomains: 'abcd',
+      // Official OpenStreetMap tile layer (100% free, keyless, zero quota limits)
+      const tileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        className: 'dark-tiles',
         maxZoom: 19
       }).addTo(map);
 
