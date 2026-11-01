@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from backend.app.api.deps import get_db
 from backend.app.config import settings
@@ -217,8 +218,9 @@ async def verify_proof_of_fix(
         with open(verify_video_path, "wb") as f:
             f.write(content)
 
-        detections, c_conf, r_area, best_frame, annotated_path, video_meta = \
-            analyze_video(verify_video_path, settings.UPLOAD_DIR, max_frames=8)
+        detections, c_conf, r_area, best_frame, annotated_path, video_meta = await run_in_threadpool(
+            analyze_video, verify_video_path, settings.UPLOAD_DIR, max_frames=8
+        )
 
         annotated_after_name = os.path.basename(annotated_path) if annotated_path else ""
         ticket.verification_video_path = verify_video_name
@@ -234,7 +236,9 @@ async def verify_proof_of_fix(
         annotated_after_name = f"annotated_after_{file_id}.jpg"
         annotated_after_path = os.path.join(settings.UPLOAD_DIR, annotated_after_name)
 
-        detections, c_conf, r_area, _ = run_vision_pipeline(after_img_path, annotated_after_path)
+        detections, c_conf, r_area, _ = await run_in_threadpool(
+            run_vision_pipeline, after_img_path, annotated_after_path
+        )
         media_label = "Image"
 
     # ── Severity comparison ───────────────────────────────────────────────────

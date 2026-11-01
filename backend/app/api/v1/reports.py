@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from backend.app.api.deps import get_db
 from backend.app.config import settings
@@ -38,7 +39,7 @@ async def submit_citizen_report(
 
     Image upload:
       1. Perceptual hashing (dHash) & EXIF anti-spoofing
-      2. 3-layer vision pipeline (YOLO → CNN classifier → OpenCV)
+      2. 3-layer vision pipeline (YOLO → CNN classifier → OpenCV) in worker threadpool
 
     Video upload:
       1. Keyframe extraction (every 2s, up to 8 frames)
@@ -47,7 +48,7 @@ async def submit_citizen_report(
       4. Best frame used as representative image for ticket
 
     Common pipeline (both):
-      3. Live OpenStreetMap Nominatim reverse geocoding
+      3. Live OpenStreetMap Nominatim reverse geocoding (with fast timeout fallback)
       4. Live Open-Meteo environmental weather risk
       5. Multimodal mathematical severity calculation (with visual verification guard)
       6. Spatio-temporal DBSCAN deduplication (35m radius)
@@ -82,11 +83,11 @@ async def submit_citizen_report(
         with open(video_path_on_disk, "wb") as f:
             f.write(media_content)
 
-        # Run full video analysis pipeline (keyframe extraction → per-frame vision)
-        detections, c_conf, r_area, best_frame_path, annotated_path, video_meta = \
-            analyze_video(video_path_on_disk, settings.UPLOAD_DIR, max_frames=8)
+        # Run video analysis in threadpool to prevent freezing the event loop
+        detections, c_conf, r_area, best_frame_path, annotated_path, video_meta = await run_in_threadpool(
+            analyze_video, video_path_on_disk, settings.UPLOAD_DIR, max_frames=8
+        )
 
-        # Use the best frame as the representative image
         if best_frame_path and os.path.exists(best_frame_path):
             raw_img_name = os.path.basename(best_frame_path)
             raw_img_path = best_frame_path
@@ -102,7 +103,9 @@ async def submit_citizen_report(
         # Extract audio from video for Whisper transcription (if no separate audio uploaded)
         video_audio_path = None
         if audio is None or not (audio.filename or "").strip():
-            video_audio_path = extract_audio_from_video(video_path_on_disk, settings.UPLOAD_DIR)
+            video_audio_path = await run_in_threadpool(
+                extract_audio_from_video, video_path_on_disk, settings.UPLOAD_DIR
+            )
 
     else:
         # ── IMAGE PATH ────────────────────────────────────────────────────────
@@ -114,8 +117,10 @@ async def submit_citizen_report(
         annotated_img_name = f"annotated_{file_id}.jpg"
         annotated_img_path = os.path.join(settings.UPLOAD_DIR, annotated_img_name)
 
-        # Run 3-layer vision pipeline
-        detections, c_conf, r_area, preview_b64 = run_vision_pipeline(raw_img_path, annotated_img_path)
+        # Run 3-layer vision pipeline in threadpool (non-blocking)
+        detections, c_conf, r_area, preview_b64 = await run_in_threadpool(
+            run_vision_pipeline, raw_img_path, annotated_img_path
+        )
 
     # ── Perceptual hash & forensics ──────────────────────────────────────────
     p_hash = compute_dhash(raw_img_path) if os.path.exists(raw_img_path) else ""
@@ -133,11 +138,15 @@ async def submit_citizen_report(
         audio_content = await audio.read()
         with open(audio_path, "wb") as f:
             f.write(audio_content)
-        transcript, urgency_keywords, audio_meta = transcribe_and_analyze_audio(audio_path)
+        transcript, urgency_keywords, audio_meta = await run_in_threadpool(
+            transcribe_and_analyze_audio, audio_path
+        )
 
     elif is_video and video_audio_path:
         audio_path = video_audio_path
-        transcript, urgency_keywords, audio_meta = transcribe_and_analyze_audio(audio_path)
+        transcript, urgency_keywords, audio_meta = await run_in_threadpool(
+            transcribe_and_analyze_audio, audio_path
+        )
 
     # ── Category resolution ───────────────────────────────────────────────────
     detected_labels = [d["label"].lower() for d in detections]
@@ -158,7 +167,7 @@ async def submit_citizen_report(
     else:
         category = "Pothole / Road Damage"
 
-    # ── Live geocoding & weather ──────────────────────────────────────────────
+    # ── Live geocoding & weather (with fast timeouts & non-blocking fallbacks) ─
     address_str, ward_str = await reverse_geocode_nominatim(latitude, longitude)
     e_weather, weather_details = await fetch_live_weather_risk(latitude, longitude)
 

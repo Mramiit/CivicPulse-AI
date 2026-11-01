@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy import text
+from starlette.concurrency import run_in_threadpool
 
 from backend.app.config import settings
 from backend.app.db.session import engine
@@ -46,6 +47,16 @@ async def lifespan(app: FastAPI):
     # Ensure all database tables exist on startup
     Base.metadata.create_all(bind=engine)
     _ensure_schema_columns(engine)
+
+    # Pre-warm vision models on startup in background thread
+    # This ensures user requests never freeze or download models over HTTP!
+    try:
+        from backend.app.services.vision_service import get_yolo_model
+        await run_in_threadpool(get_yolo_model)
+        print("[Startup] Vision models pre-warmed successfully.")
+    except Exception as e:
+        print(f"[Startup] Vision pre-warm notice: {e}")
+
     yield
 
 

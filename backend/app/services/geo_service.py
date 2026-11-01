@@ -6,6 +6,7 @@ async def reverse_geocode_nominatim(latitude: float, longitude: float) -> Tuple[
     """
     Reverse geocodes latitude and longitude using the live OpenStreetMap Nominatim REST API.
     Complies with OSM Usage Policy by providing a valid, descriptive User-Agent header.
+    Uses a strict 3.5s timeout with fast fallback to coordinates so cloud deployments never stall.
     
     Returns:
         Tuple of (formatted_address, ward_or_suburb_name)
@@ -23,7 +24,7 @@ async def reverse_geocode_nominatim(latitude: float, longitude: float) -> Tuple[
     }
 
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with httpx.AsyncClient(timeout=3.5) as client:
             response = await client.get(settings.NOMINATIM_URL, params=params, headers=headers)
             if response.status_code == 200:
                 data = response.json()
@@ -42,7 +43,7 @@ async def reverse_geocode_nominatim(latitude: float, longitude: float) -> Tuple[
                 )
                 return display_name, ward
     except Exception as e:
-        # Fallback without crashing
+        # Fallback cleanly without stalling
         pass
 
     fallback_addr = f"Geolocated Pin ({latitude:.5f}° N, {longitude:.5f}° E)"
@@ -52,9 +53,7 @@ async def reverse_geocode_nominatim(latitude: float, longitude: float) -> Tuple[
 async def fetch_live_weather_risk(latitude: float, longitude: float) -> Tuple[float, Dict[str, Any]]:
     """
     Queries the live Open-Meteo REST API for real-time weather and precipitation hazards.
-    Computes environmental risk factor E_weather in [0.0, 1.0].
-    
-    Precipitation amplifies road degradation, waterlogging hazard, and traffic collision probability.
+    Uses a strict 3.5s timeout with instant fallback to baseline weather so requests never block.
     """
     params = {
         "latitude": latitude,
@@ -74,7 +73,7 @@ async def fetch_live_weather_risk(latitude: float, longitude: float) -> Tuple[fl
     e_weather = 0.10  # Mild baseline
 
     try:
-        async with httpx.AsyncClient(timeout=6.0) as client:
+        async with httpx.AsyncClient(timeout=3.5) as client:
             response = await client.get(settings.OPEN_METEO_URL, params=params)
             if response.status_code == 200:
                 data = response.json()
@@ -109,9 +108,7 @@ async def fetch_live_weather_risk(latitude: float, longitude: float) -> Tuple[fl
                     condition = "Clear Sky"
                     code_risk = 0.05
 
-                # Precipitation formula: 0 mm = 0.0, 10 mm/h = 0.6, 25+ mm/h = 1.0
                 precip_risk = min(1.0, total_precip / 20.0)
-                
                 e_weather = max(code_risk, precip_risk)
                 e_weather = min(1.0, max(0.05, e_weather))
 
@@ -124,7 +121,6 @@ async def fetch_live_weather_risk(latitude: float, longitude: float) -> Tuple[fl
                     "e_weather": round(e_weather, 2)
                 }
     except Exception as e:
-        # Fallback to mild conditions
         weather_info["error"] = str(e)
 
     return round(e_weather, 2), weather_info

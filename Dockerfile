@@ -15,8 +15,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download YOLOv8 weights during build so Render never downloads weights at runtime!
+RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')" || true
+
 # Copy application source
 COPY . .
+
+# Ensure weights directory exists and copy model if downloaded in root
+RUN mkdir -p weights && (cp yolov8n.pt weights/yolov8n.pt 2>/dev/null || true)
 
 # Expose FastAPI port
 EXPOSE 8000

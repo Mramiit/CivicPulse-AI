@@ -597,7 +597,14 @@
           headers: { 'User-Agent': 'CivicPulseAI-Web/1.0' }
         });
         if (res.ok) {
-          const data = await res.json();
+          let data;
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            data = await res.json();
+          } else {
+            const errText = await res.text();
+            throw new Error('Server returned HTTP ' + res.status + ': ' + (errText.slice(0, 140) || 'Service timeout or gateway error'));
+          }
           preview.innerHTML = `<span class="text-emerald-400 font-semibold">OSM:</span> ${data.display_name}`;
           return;
         }
@@ -821,7 +828,14 @@
           method: 'POST',
           body: formData
         });
-        const data = await res.json();
+        let data;
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const errText = await res.text();
+          throw new Error('Server returned HTTP ' + res.status + ': ' + (errText.slice(0, 140) || 'Service timeout or gateway error'));
+        }
 
         banner.classList.remove('hidden');
         if (res.ok) {
@@ -886,7 +900,14 @@
           method: 'POST',
           body: formData
         });
-        const data = await res.json();
+        let data;
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const errText = await res.text();
+          throw new Error('Server returned HTTP ' + res.status + ': ' + (errText.slice(0, 140) || 'Service timeout or gateway error'));
+        }
         banner.classList.remove('hidden');
 
         if (res.ok) {
@@ -1121,7 +1142,14 @@
       try {
         const res = await fetch('/api/v1/analytics');
         if (res.ok) {
-          const data = await res.json();
+          let data;
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            data = await res.json();
+          } else {
+            const errText = await res.text();
+            throw new Error('Server returned HTTP ' + res.status + ': ' + (errText.slice(0, 140) || 'Service timeout or gateway error'));
+          }
           document.getElementById('metric-active').innerText = data.active_tickets;
           document.getElementById('metric-critical').innerText = data.sla_breach_risk.critical_under_24h;
           document.getElementById('metric-severity').innerText = data.avg_severity.toFixed(2);
